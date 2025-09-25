@@ -10,6 +10,8 @@ from random import shuffle
 def evaluate_flan_results_zero_shot(folder, flan_model_name):
     sub_dirs = os.listdir(folder)
 
+    task_acc_list = []
+
     for sub_dir in sub_dirs:
         test_file_path = os.path.join(folder, sub_dir, "zero_shot.jsonl")
         task_inputs, task_outputs = [], []
@@ -18,15 +20,22 @@ def evaluate_flan_results_zero_shot(folder, flan_model_name):
             task_inputs.append(example["context"])
             task_outputs.append(example["completion"])
         print("Evaluating on task (zero shot): ", sub_dir)
-        lorahub_inference(task_inputs,
+        _,task_acc = lorahub_inference(task_inputs,
                           flan_model_name,
                           flan_model_name,
                           16,
                           task_outputs)
+        task_acc_list.append(task_acc)
+    avg_acc, max_acc = sum(task_acc_list) / len(task_acc_list), max(task_acc_list)
+    print("average acc:", avg_acc, "best acc:", max_acc)
+    with open("output.txt", "w", encoding="utf-8") as f:
+        f.write("average acc:", avg_acc, "best acc:", max_acc)
 
 
 def evaluate_flan_results_few_shot(folder, flan_model_name):
     sub_dirs = os.listdir(folder)
+
+    task_acc_list = []
 
     for sub_dir in sub_dirs:
         test_file_path = os.path.join(folder, sub_dir, "few_shot.jsonl")
@@ -36,16 +45,23 @@ def evaluate_flan_results_few_shot(folder, flan_model_name):
             task_inputs.append(example["context"])
             task_outputs.append(example["completion"])
         print("Evaluating on task (five shot): ", sub_dir)
-        lorahub_inference(task_inputs,
+        _,task_acc = lorahub_inference(task_inputs,
                           flan_model_name,
                           flan_model_name,
                           16,
                           task_outputs)
-
+        task_acc_list.append(task_acc)
+    avg_acc, max_acc = sum(task_acc_list) / len(task_acc_list), max(task_acc_list)
+    print("average acc:", avg_acc, "best acc:", max_acc)
+    with open("output.txt", "w", encoding="utf-8") as f:
+        f.write("average acc:", avg_acc, "best acc:", max_acc)
 
 def evaluate_lorahub_results_few_shot(folder, flan_model_name):
     sub_dirs = os.listdir(folder)
 
+    # 就是把data_bbh的数据读出来，然后随机选5个例子，然后训练一个LoRA模型
+    # 然后评估这个LoRA模型在zero_shot.jsonl上的表现
+    # 然后重复5次，取平均值
     # 5 seeds used in our experiments
     for sub_dir in sub_dirs:
         # construct the few-shot examples for lorahub learning
@@ -56,15 +72,15 @@ def evaluate_lorahub_results_few_shot(folder, flan_model_name):
             example_inputs.append(example["context"])
             examples_outputs.append(example["completion"])
             
-        # random select 5 examples for each task
+        # random select 5 examples for each task，random.seed(42) 是随机种子
         random.seed(42)
         shuffled_set = list(zip(example_inputs, examples_outputs))
         random.shuffle(shuffled_set)
         example_inputs, examples_outputs = zip(*shuffled_set)
-        # take the first 5 examples
+        # take the first 5 examples，这里就是取前5个例子
         example_inputs, examples_outputs = example_inputs[:5], examples_outputs[:5]
 
-        # load the zero-shot examples for evaluation
+        # load the zero-shot examples for evaluation，这里就是读取zero_shot.jsonl的数据
         test_file_path = os.path.join(folder, sub_dir, "zero_shot.jsonl")
         task_inputs, task_outputs = [], []
         for line in open(test_file_path, "r", encoding="utf-8"):
@@ -102,7 +118,8 @@ def evaluate_lorahub_results_few_shot(folder, flan_model_name):
             task_perf_list.append(task_acc)
         avg_perf, max_perf = sum(task_perf_list) / len(task_perf_list), max(task_perf_list)
         print("average perf:", avg_perf, "best perf:", max_perf)
-
+        with open("output.txt", "w", encoding="utf-8") as f:
+            f.write("average perf:", avg_perf, "best perf:", max_perf)
 
 if __name__ == "__main__":
     if not os.path.exists("data_bbh"):
