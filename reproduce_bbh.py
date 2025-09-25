@@ -174,7 +174,7 @@ def generate_latex_table(tasks: List[str],
         z = fmt(zero_dict.get(t, float("nan"))) if t in zero_dict else ""
         f = fmt(few_dict.get(t, float("nan"))) if t in few_dict else ""
         l = fmt(lora_dict.get(t, float("nan"))) if t in lora_dict else ""
-        lines.append(f"{t.replace('_', '\\_')} & {z} & {f} & {l} \\\")
+        lines.append(f"{t.replace('_', '\\_')} & {z} & {f} & {l} \\")
     # 计算平均
     def safe_avg(d: Dict[str, float]) -> float:
         vals = [v for k, v in d.items() if isinstance(v, (int, float))]
