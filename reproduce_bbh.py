@@ -168,7 +168,7 @@ def generate_latex_table(tasks: List[str],
     lines: List[str] = []
     lines.append("\\begin{tabular}{lccc}")
     lines.append("\\toprule")
-    lines.append("task & zero\\_shot & few\\_shot & lorahub \\\")
+    lines.append("task & zero_{shot} & few_{shot} & lorahub \\")
     lines.append("\\midrule")
     for t in tasks:
         z = fmt(zero_dict.get(t, float("nan"))) if t in zero_dict else ""
