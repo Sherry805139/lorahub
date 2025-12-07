@@ -106,28 +106,56 @@ def load_base_model_and_lora_modules(
 
 def preprocess_function(examples, tokenizer):
     """
-    standard preprocess function for dataset
+    适配 Qwen2-VL 等 causal LM 的预处理：
+    - 将 input 和 output 拼接成一个完整序列： full_text = input + "\\n\\n" + output
+    - labels 与 input_ids 等长，但将 prompt 部分（对应 input）mask 掉（设为 -100）
+    这样可以避免 seq2seq 风格下 input/label 长度不一致导致的 cross_entropy 维度错误。
     """
     inputs = examples["input"]
     targets = examples["output"]
-    model_inputs = tokenizer(
-        inputs,
-        max_length=2048,
+
+    all_input_ids = []
+    all_labels = []
+
+    for inp, tgt in zip(inputs, targets):
+        inp = inp if inp is not None else ""
+        tgt = tgt if tgt is not None else ""
+        full_text = inp + "\n\n" + tgt
+
+        # 整体序列
+        full_enc = tokenizer(
+            full_text,
+            max_length=2048,
+            truncation=True,
+            add_special_tokens=True,
+        )
+        input_ids = full_enc["input_ids"]
+
+        # 只编码 prompt，用于确定需要 mask 的长度
+        prompt_enc = tokenizer(
+            inp,
+            max_length=2048,
+            truncation=True,
+            add_special_tokens=True,
+        )
+        prompt_len = len(prompt_enc["input_ids"])
+
+        labels = input_ids.copy()
+        # 将 prompt 部分的 label 设为 -100，不参与损失
+        for i in range(min(prompt_len, len(labels))):
+            labels[i] = -100
+
+        all_input_ids.append(input_ids)
+        all_labels.append(labels)
+
+    # 统一 padding，生成 batch
+    batch = tokenizer.pad(
+        {"input_ids": all_input_ids, "labels": all_labels},
         padding=True,
-        truncation=True,
+        max_length=2048,
         return_tensors="pt",
     )
-    labels = tokenizer(
-        targets,
-        max_length=2048,
-        padding=True,
-        truncation=True,
-        return_tensors="pt",
-    )
-    labels = labels["input_ids"]
-    labels[labels == tokenizer.pad_token_id] = -100
-    model_inputs["labels"] = labels
-    return model_inputs
+    return batch
 
 
 def load_dataset(example_inputs, example_outputs, tokenizer):
