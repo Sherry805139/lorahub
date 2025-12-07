@@ -1,4 +1,4 @@
-from transformers import AutoModelForSeq2SeqLM
+from transformers import AutoModelForCausalLM
 import torch
 from datasets import Dataset
 from torch.utils.data import DataLoader
@@ -30,7 +30,8 @@ def load_base_model_and_lora_modules(lora_module_list: List[str], model_name_or_
     if model_name_or_path is None:
         model_name_or_path = PeftConfig.from_pretrained(default_peft_model_id).base_model_name_or_path
         
-    base_model = AutoModelForSeq2SeqLM.from_pretrained(model_name_or_path)
+    # 对于 Qwen2-VL-2B-Instruct 这类因果语言模型，使用 AutoModelForCausalLM 加载
+    base_model = AutoModelForCausalLM.from_pretrained(model_name_or_path)
     # load tokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_name_or_path)
     # 0 is the default model
@@ -184,7 +185,7 @@ def get_final_weights(weights, lora_module_list, cache):
     return final_state_dict
     
 def lorahub_inference(example_inputs: List[str],
-                      model_or_name_path: Union[AutoModelForSeq2SeqLM, str],
+                      model_or_name_path: Union[AutoModelForCausalLM, str],
                       tokenizer_or_tokenizer_path: Union[AutoTokenizer, str],
                       batch_size: int,
                       # if not provided, we do not report the accuracy
@@ -200,9 +201,9 @@ def lorahub_inference(example_inputs: List[str],
         return correct / total * 100
 
     example_predictions = []
-    # load model
+    # load model（支持直接传路径或已加载好的模型）
     if isinstance(model_or_name_path, str):
-        model = AutoModelForSeq2SeqLM.from_pretrained(model_or_name_path)
+        model = AutoModelForCausalLM.from_pretrained(model_or_name_path)
     else:
         model = model_or_name_path
     
