@@ -61,15 +61,18 @@ def load_examples_from_example_jsonl(
     return examples
 
 
-def load_inputs_from_infer_jsonl(path: str, max_examples: int = 50) -> List[str]:
+def load_inputs_and_labels_from_infer_jsonl(
+    path: str, max_examples: int = 50
+) -> (List[str], List[str]):
     """
-    从 infer.jsonl 中读取若干条样本，构造推理用的输入字符串。
+    从 infer.jsonl 中读取若干条样本，构造推理用的输入字符串和标签字符串。
 
     约定：
-    - 使用 instruction 作为主要文本
-    - 把 imgs 中的图片路径也附在末尾，编码成文本（同上，仅作为占位）
+    - input: 使用 instruction 作为主要文本，并把 imgs 中的图片路径附在末尾（仅作为占位）
+    - label: 将 acts_convert 列表按行拼接成一个字符串，作为目标动作序列
     """
     inputs: List[str] = []
+    labels: List[str] = []
 
     with open(path, "r", encoding="utf-8") as f:
         for line in f:
@@ -79,18 +82,27 @@ def load_inputs_from_infer_jsonl(path: str, max_examples: int = 50) -> List[str]
 
             instruction = data["instruction"].strip()
             imgs = data.get("imgs", [])
+            acts_convert = data.get("acts_convert", [])
 
+            # 构造输入：指令 + 图片路径占位
             images_block = ""
             if imgs:
                 images_block = "\n\n[IMAGE_PATHS]\n" + "\n".join(imgs)
-
             input_text = instruction + images_block
             inputs.append(input_text)
+
+            # 构造标签：把动作序列按行拼接
+            if isinstance(acts_convert, list):
+                label_text = "\n".join(acts_convert).strip()
+            else:
+                # 如果格式异常，退化为空字符串，避免报错
+                label_text = ""
+            labels.append(label_text)
 
             if len(inputs) >= max_examples:
                 break
 
-    return inputs
+    return inputs, labels
 
 
 # few-shot 学习数据：直接从 example.jsonl 读取前 N 条
@@ -120,13 +132,15 @@ def main():
     print("learned weights:", module_weights)
 
     # 用组合后的模型在 infer.jsonl 上做推理
-    test_inputs = load_inputs_from_infer_jsonl(INFER_JSONL, max_examples=50)
+    test_inputs, test_labels = load_inputs_and_labels_from_infer_jsonl(
+        INFER_JSONL, max_examples=100
+    )
     preds, acc = lorahub_inference(
         example_inputs=test_inputs,
         model_or_name_path=model,  # 直接传上面返回的合并后模型
         tokenizer_or_tokenizer_path=tokenizer,
         batch_size=8,
-        example_outputs=None,  # infer.jsonl 没有标准答案，这里不算 accuracy
+        example_outputs=test_labels,  # 使用 acts_convert 作为标签，计算 accuracy
     )
     print("num_test_examples:", len(test_inputs))
     print("predictions_example_0_3:", preds[:3])
