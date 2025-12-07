@@ -251,15 +251,76 @@ def lorahub_inference(example_inputs: List[str],
                       batch_size: int,
                       # if not provided, we do not report the accuracy
                       example_outputs: List[str]=None):
-    
+
+    def _simple_tokenize(text: str):
+        # 简单分词：小写 + 去掉两端空白 + 按空格切分
+        return text.lower().strip().split()
+
+    def _tfidf_cosine(a: str, b: str) -> float:
+        """
+        一个轻量级的 TF-IDF + 余弦相似度实现（只在当前两个文本上计算），
+        用来近似 test_swift_cate.py 中的 calculate_tfidf。
+        """
+        tokens_a = _simple_tokenize(a)
+        tokens_b = _simple_tokenize(b)
+        if not tokens_a or not tokens_b:
+            return 0.0
+
+        vocab = {}
+        for tok in set(tokens_a + tokens_b):
+            vocab.setdefault(tok, len(vocab))
+
+        import math
+
+        def build_vec(tokens):
+            # 计算 TF
+            tf = [0.0] * len(vocab)
+            for t in tokens:
+                if t in vocab:
+                    tf[vocab[t]] += 1.0
+            return tf
+
+        tf_a = build_vec(tokens_a)
+        tf_b = build_vec(tokens_b)
+
+        # 计算 DF / IDF
+        df = [0] * len(vocab)
+        for i, v in enumerate(tf_a):
+            if v > 0:
+                df[i] += 1
+        for i, v in enumerate(tf_b):
+            if v > 0:
+                df[i] += 1
+        N = 2.0
+        idf = [math.log((N + 1.0) / (d + 1.0)) + 1.0 for d in df]
+
+        # 乘上 IDF 得到 TF-IDF 向量
+        vec_a = [tf_a[i] * idf[i] for i in range(len(vocab))]
+        vec_b = [tf_b[i] * idf[i] for i in range(len(vocab))]
+
+        # 余弦相似度
+        dot = sum(x * y for x, y in zip(vec_a, vec_b))
+        norm_a = math.sqrt(sum(x * x for x in vec_a))
+        norm_b = math.sqrt(sum(x * x for x in vec_b))
+        if norm_a == 0 or norm_b == 0:
+            return 0.0
+        return dot / (norm_a * norm_b)
+
     def accuracy_score(outputs, ground_truths):
+        """
+        使用 TF-IDF 余弦相似度评估生成的动作序列与标签的接近程度。
+        与 test_swift_cate.py 的 judge_step 对齐：sim > 0.6 记为 1，否则 0。
+        """
         correct = 0
         total = 0
         for output, truth in zip(outputs, ground_truths):
-            if output.strip().lower().replace(".", "") == truth.strip().lower().replace(".", ""):
+            sim = _tfidf_cosine(output, truth)
+            if sim > 0.6:
                 correct += 1
             total += 1
-        return correct / total * 100
+        if total == 0:
+            return 0.0
+        return correct / total * 100.0
 
     example_predictions = []
     # load model（支持直接传路径或已加载好的模型）
