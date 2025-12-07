@@ -1,7 +1,7 @@
 import os
 import copy
 from functools import partial
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Any
 
 import torch
 from datasets import Dataset
@@ -210,7 +210,7 @@ def get_final_weights(weights, lora_module_list, cache):
     return final_state_dict
     
 def lorahub_inference(example_inputs: List[str],
-                      model_or_name_path: Union[Qwen2VLForConditionalGeneration, str],
+                      model_or_name_path: Union[Any, str],
                       tokenizer_or_tokenizer_path: Union[AutoTokenizer, str],
                       batch_size: int,
                       # if not provided, we do not report the accuracy
