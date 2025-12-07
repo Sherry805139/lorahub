@@ -1,88 +1,67 @@
 import os
-from transformers import AutoTokenizer
-from transformers import Qwen2VLForConditionalGeneration
+import copy
+from functools import partial
+from typing import List, Optional, Union
+
 import torch
 from datasets import Dataset
 from torch.utils.data import DataLoader
-from transformers import default_data_collator
+from transformers import default_data_collator, AutoTokenizer
 from tqdm import tqdm
 import pandas as pd
 import numpy
 import random
 import nevergrad as ng
-from peft.utils.save_and_load import set_peft_model_state_dict, get_peft_model_state_dict
-from peft import PeftModel, PeftConfig, get_peft_model
-from functools import partial
-from typing import List, Optional, Union
-import copy
 
-try:
-    # safetensors 加载 LoRA 权重（如果可用）
-    from safetensors.torch import load_file as safetensors_load_file
-except ImportError:
-    safetensors_load_file = None
+# 使用 swift 中封装过的 peft，自动打补丁以支持多模态模型（如 Qwen2-VL）
+from swift.tuners import PeftModel, PeftConfig, get_peft_model_state_dict
+from peft.utils.save_and_load import set_peft_model_state_dict
+from swift.llm.utils import get_model_tokenizer
 
-def load_base_model_and_lora_modules(lora_module_list: List[str], model_name_or_path: Optional[str] = None):
-    """load base model and lora modules from huggingface model hub
+
+def load_base_model_and_lora_modules(
+    lora_module_list: List[str],
+    model_name_or_path: Optional[str] = None,
+    model_type: str = "qwen2-vl-2b-instruct",
+):
+    """加载 Qwen2-VL base model 和一组 LoRA 模块（来自本地 peft/Swift 训练的目录）
 
     Args:
-        lora_module_list (List[str]): a list of lora module names available in huggingface model hub
-        model_name_or_path (Optional[str]): base model name, default is None
+        lora_module_list (List[str]): 一组 LoRA 目录（如 global_lora_30 或 category_lora_office 等）
+        model_name_or_path (Optional[str]): 底模路径，默认从 LoRA 的 adapter_config.json 里读取
+        model_type (str): swift 的 model_type 标识，默认 'qwen2-vl-2b-instruct'
     """
-    # use gpu if available
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    # load basic model
+
+    if len(lora_module_list) == 0:
+        raise ValueError("lora_module_list 不能为空")
+
+    # 以第一个 LoRA 目录为基准，读取 base_model_name_or_path
     default_peft_model_id = lora_module_list[0]
+    peft_config: PeftConfig = PeftConfig.from_pretrained(default_peft_model_id)
 
-    # 读取默认 LoRA 的 peft 配置
-    default_peft_config: PeftConfig = PeftConfig.from_pretrained(default_peft_model_id)
-
-    # find the base model
     if model_name_or_path is None:
-        model_name_or_path = default_peft_config.base_model_name_or_path
+        model_name_or_path = peft_config.base_model_name_or_path
 
-    # 对于 Qwen2-VL-2B-Instruct 这类多模态因果模型，直接使用 Qwen2VLForConditionalGeneration 加载
-    base_model = Qwen2VLForConditionalGeneration.from_pretrained(
-        model_name_or_path,
-        trust_remote_code=True,
+    # 使用 swift 的 get_model_tokenizer 正确加载 Qwen2-VL 模型（含 is_multimodal 标记等）
+    base_model, tokenizer = get_model_tokenizer(
+        model_type,
+        torch_dtype=None,
+        model_kwargs={},
+        load_model=True,
+        model_id_or_path=model_name_or_path,
+        revision=None,
+        quant_method=None,
     )
-    # load tokenizer（同样加上 trust_remote_code 以兼容 Qwen2-VL）
-    tokenizer = AutoTokenizer.from_pretrained(
-        model_name_or_path,
-        trust_remote_code=True,
-    )
 
-    # 修正 Qwen2-VL LoRA 的 target_modules，避免把整个 Qwen2VLModel 当作 target module
-    # 原始配置中 target_modules 通常是 "^(model)(?!.*(lm_head|output|emb|wte|shared)).*"
-    # 这里将其收窄到 language_model 子模块
-    if hasattr(default_peft_config, "target_modules") and isinstance(default_peft_config.target_modules, str):
-        if default_peft_config.target_modules.startswith("^(model)"):
-            default_peft_config.target_modules = r"^model\.language_model(?!.*(lm_head|output|emb|wte|shared)).*"
-
-    # 基于修正后的配置构建带 LoRA 结构的 PeftModel（此时还未加载具体权重）
+    # 默认 LoRA：构造一个带 LoRA 结构的 PeftModel（使用 swift 打过补丁的 peft）
     try:
-        peft_model = get_peft_model(base_model, default_peft_config)
+        peft_model = PeftModel.from_pretrained(base_model, default_peft_model_id)
     except Exception as e:
-        raise Exception(f"Failed to create PeftModel for {default_peft_model_id}: {e}")
+        raise Exception(f"{default_peft_model_id} is unable to load into the model {model_name_or_path}: {e}")
 
-    def _load_lora_state_dict(peft_model_id: str):
-        """
-        从本地目录加载 LoRA adapter 的 state_dict，优先使用 safetensors。
-        """
-        if os.path.isdir(peft_model_id):
-            # 优先 adapter_model.safetensors
-            if safetensors_load_file is not None:
-                st_path = os.path.join(peft_model_id, "adapter_model.safetensors")
-                if os.path.exists(st_path):
-                    return safetensors_load_file(st_path, device="cpu")
-            # 其次 adapter_model.bin
-            bin_path = os.path.join(peft_model_id, "adapter_model.bin")
-            if os.path.exists(bin_path):
-                return torch.load(bin_path, map_location="cpu")
-
-        # 回退：使用 PeftModel.from_pretrained（例如 HuggingFace Hub 模型）
-        tmp_peft_model = PeftModel.from_pretrained(base_model, peft_model_id)
-        return copy.deepcopy(get_peft_model_state_dict(tmp_peft_model))
+    peft_model = peft_model.to(device)
+    peft_model.eval()
 
     print("> Begin to load lora modules")
     cache = {}
@@ -90,26 +69,24 @@ def load_base_model_and_lora_modules(lora_module_list: List[str], model_name_or_
 
     for peft_model_id in tqdm(lora_module_list):
         print("> Loading {} ...".format(peft_model_id))
-        state_dict = _load_lora_state_dict(peft_model_id)
+        # 使用 PeftModel.from_pretrained 读取每个 LoRA 对应的 state_dict
+        cur_peft_model = PeftModel.from_pretrained(base_model, peft_model_id)
+        state_dict = copy.deepcopy(get_peft_model_state_dict(cur_peft_model))
         cache[peft_model_id] = state_dict
 
         if first_dict is None:
             first_dict = state_dict
-        # check whether the LoRA can be merged into one
+        # 检查各个 LoRA 的结构是否一致（形状必须完全相同）
         try:
-            # detect whether the arch is the same
             for key in first_dict.keys():
                 assert first_dict[key].shape == cache[peft_model_id][key].shape
         except Exception:
             raise Exception(
-                f'LoRA Modules {peft_model_id} cannot be merged since it has a different arch (e.g., rank).'
+                f"LoRA Modules {peft_model_id} cannot be merged since it has a different arch (e.g., rank)."
             )
 
     # 将默认 LoRA 的权重加载到 peft_model 中，作为初始状态
     set_peft_model_state_dict(peft_model, cache[default_peft_model_id])
-
-    peft_model = peft_model.to(device)
-    peft_model.eval()
 
     return peft_model, tokenizer, cache
 
