@@ -1,4 +1,5 @@
 import os
+import json
 import copy
 from functools import partial
 from typing import List, Optional, Union, Any
@@ -14,7 +15,7 @@ import random
 import nevergrad as ng
 
 # 使用 swift 中封装过的 peft，自动打补丁以支持多模态模型（如 Qwen2-VL）
-from swift.tuners import PeftModel, PeftConfig, get_peft_model_state_dict
+from swift.tuners import PeftModel, get_peft_model_state_dict
 from peft.utils.save_and_load import set_peft_model_state_dict
 from swift.llm.utils import get_model_tokenizer
 
@@ -38,10 +39,20 @@ def load_base_model_and_lora_modules(
 
     # 以第一个 LoRA 目录为基准，读取 base_model_name_or_path
     default_peft_model_id = lora_module_list[0]
-    peft_config: PeftConfig = PeftConfig.from_pretrained(default_peft_model_id)
 
+    # 直接解析本地 adapter_config.json，避免调用被 swift wrap 过的 PeftConfig.from_pretrained
     if model_name_or_path is None:
-        model_name_or_path = peft_config.base_model_name_or_path
+        adapter_cfg_path = os.path.join(default_peft_model_id, "adapter_config.json")
+        if not os.path.exists(adapter_cfg_path):
+            raise FileNotFoundError(f"adapter_config.json not found in {default_peft_model_id}")
+        with open(adapter_cfg_path, "r", encoding="utf-8") as f:
+            adapter_cfg = json.load(f)
+        model_name_or_path = adapter_cfg.get("base_model_name_or_path", None)
+        if model_name_or_path is None:
+            raise ValueError(
+                f"'base_model_name_or_path' not found in {adapter_cfg_path}, "
+                "please specify model_name_or_path explicitly."
+            )
 
     # 使用 swift 的 get_model_tokenizer 正确加载 Qwen2-VL 模型（含 is_multimodal 标记等）
     base_model, tokenizer = get_model_tokenizer(
