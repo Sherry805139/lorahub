@@ -31,9 +31,16 @@ def load_base_model_and_lora_modules(lora_module_list: List[str], model_name_or_
         model_name_or_path = PeftConfig.from_pretrained(default_peft_model_id).base_model_name_or_path
         
     # 对于 Qwen2-VL-2B-Instruct 这类因果语言模型，使用 AutoModelForCausalLM 加载
-    base_model = AutoModelForCausalLM.from_pretrained(model_name_or_path)
-    # load tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(model_name_or_path)
+    # 一些本地路径的 Qwen2-VL 需要 trust_remote_code 才能正确映射到模型类
+    base_model = AutoModelForCausalLM.from_pretrained(
+        model_name_or_path,
+        trust_remote_code=True,
+    )
+    # load tokenizer（同样加上 trust_remote_code 以兼容 Qwen2-VL）
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_name_or_path,
+        trust_remote_code=True,
+    )
     # 0 is the default model
     try:
         peft_model = PeftModel.from_pretrained(base_model, default_peft_model_id)
@@ -203,13 +210,19 @@ def lorahub_inference(example_inputs: List[str],
     example_predictions = []
     # load model（支持直接传路径或已加载好的模型）
     if isinstance(model_or_name_path, str):
-        model = AutoModelForCausalLM.from_pretrained(model_or_name_path)
+        model = AutoModelForCausalLM.from_pretrained(
+            model_or_name_path,
+            trust_remote_code=True,
+        )
     else:
         model = model_or_name_path
     
     # load tokenizer
     if isinstance(tokenizer_or_tokenizer_path, str):
-        tokenizer = AutoTokenizer.from_pretrained(tokenizer_or_tokenizer_path)
+        tokenizer = AutoTokenizer.from_pretrained(
+            tokenizer_or_tokenizer_path,
+            trust_remote_code=True,
+        )
     else:
         tokenizer = tokenizer_or_tokenizer_path
             
