@@ -148,14 +148,8 @@ def preprocess_function(examples, tokenizer):
         all_input_ids.append(input_ids)
         all_labels.append(labels)
 
-    # 统一 padding，生成 batch
-    batch = tokenizer.pad(
-        {"input_ids": all_input_ids, "labels": all_labels},
-        padding=True,
-        max_length=2048,
-        return_tensors="pt",
-    )
-    return batch
+    # 返回未 pad 的序列，交给 DataLoader 的 default_data_collator 统一 padding
+    return {"input_ids": all_input_ids, "labels": all_labels}
 
 
 def load_dataset(example_inputs, example_outputs, tokenizer):
