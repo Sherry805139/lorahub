@@ -55,10 +55,13 @@ def load_base_model_and_lora_modules(
             )
 
     # 使用 swift 的 get_model_tokenizer 正确加载 Qwen2-VL 模型（含 is_multimodal 标记等）
+    # 这里强制将模型全部放到单块 GPU 上（cuda:0），避免 accelerate 的 device_map=auto
+    # 把权重切到多块卡上导致输入张量 device 不一致的问题。
+    single_device = "cuda:0" if torch.cuda.is_available() else "cpu"
     base_model, tokenizer = get_model_tokenizer(
         model_type,
         torch_dtype=None,
-        model_kwargs={},
+        model_kwargs={"device_map": single_device},
         load_model=True,
         model_id_or_path=model_name_or_path,
         revision=None,
