@@ -18,6 +18,18 @@ LORA_MODULES = [
 EXAMPLE_JSONL = "example.jsonl"
 INFER_JSONL = "infer.jsonl"
 
+# 3）图片路径前缀重写（与 swift 的 --image_prefix_src/dst 类似）
+#    如果不需要重写，可以把两个常量都设为 ""。
+IMAGE_PREFIX_SRC = "/ailab/user/wangwenhao/ms-swift/androidcontrol_1108/unpack-androidcontrol/"
+IMAGE_PREFIX_DST = "./android_control_unpack/"
+
+
+def _rewrite_image_path(path: str) -> str:
+    """按照 IMAGE_PREFIX_SRC/IMAGE_PREFIX_DST 重写图片路径"""
+    if IMAGE_PREFIX_SRC and IMAGE_PREFIX_DST and path.startswith(IMAGE_PREFIX_SRC):
+        return IMAGE_PREFIX_DST + path[len(IMAGE_PREFIX_SRC):]
+    return path
+
 
 def load_examples_from_example_jsonl(
     path: str, max_examples: int = 5
@@ -48,7 +60,8 @@ def load_examples_from_example_jsonl(
             # 把图片路径也拼到 prompt 里，方便之后如果要接入 VLM，可以在这里再做解析
             images_block = ""
             if images:
-                images_block = "\n\n[IMAGE_PATHS]\n" + "\n".join(images)
+                rewritten = [_rewrite_image_path(p) for p in images]
+                images_block = "\n\n[IMAGE_PATHS]\n" + "\n".join(rewritten)
 
             input_text = user_turn["value"].strip() + images_block
             output_text = assistant_turn["value"].strip()
@@ -87,7 +100,8 @@ def load_inputs_and_labels_from_infer_jsonl(
             # 构造输入：指令 + 图片路径占位
             images_block = ""
             if imgs:
-                images_block = "\n\n[IMAGE_PATHS]\n" + "\n".join(imgs)
+                rewritten = [_rewrite_image_path(p) for p in imgs]
+                images_block = "\n\n[IMAGE_PATHS]\n" + "\n".join(rewritten)
             input_text = instruction + images_block
             inputs.append(input_text)
 
