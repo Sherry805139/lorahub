@@ -7,11 +7,11 @@ from lorahub.algorithm import lorahub_learning, lorahub_inference
 
 # 1）LoRA 模块的路径（建议用绝对路径）
 LORA_MODULES = [
-    "/home/hmpiao/xuerong/FedMABench/output/category_lora_entertainment",
-    "/home/hmpiao/xuerong/FedMABench/output/category_lora_office",
-    "/home/hmpiao/xuerong/FedMABench/output/category_lora_shopping",
-    "/home/hmpiao/xuerong/FedMABench/output/category_lora_traveling",
-    "/home/hmpiao/xuerong/FedMABench/output/category_lora_lives",
+    "/home/hmpiao/hmpiao/xuerong/FedMABench/output/category_lora_entertainment",
+    "/home/hmpiao/hmpiao/xuerong/FedMABench/output/category_lora_office",
+    "/home/hmpiao/hmpiao/xuerong/FedMABench/output/category_lora_shopping",
+    "/home/hmpiao/hmpiao/xuerong/FedMABench/output/category_lora_traveling",
+    "/home/hmpiao/hmpiao/xuerong/FedMABench/output/category_lora_lives",
 ]
 
 # 2）few-shot 学习用的数据（example.jsonl）和推理评估用的数据（infer.jsonl）
