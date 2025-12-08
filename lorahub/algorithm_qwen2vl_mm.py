@@ -158,22 +158,20 @@ def _mm_get_loss(
         # 对 batch 中每个样本分别构造 messages / vision info / chat_template 文本
         texts: List[str] = []
         batch_image_inputs = []
-        batch_video_inputs = []
         for inp, out in zip(batch_inp, batch_out):
             messages, _ = _build_mm_messages_and_images(inp, out)
             # 训练阶段不需要 generation prompt
             text = processor.apply_chat_template(
                 messages, tokenize=False, add_generation_prompt=False
             )
-            image_inputs, video_inputs = process_vision_info(messages)
+            image_inputs, _ = process_vision_info(messages)
             texts.append(text)
             batch_image_inputs.append(image_inputs)
-            batch_video_inputs.append(video_inputs)
 
+        # 这里只有图像，没有视频，显式不传 videos，避免空视频列表触发内部错误
         inputs = processor(
             text=texts,
             images=batch_image_inputs,
-            videos=batch_video_inputs,
             padding=True,
             return_tensors="pt",
         )
@@ -404,7 +402,6 @@ def lorahub_inference(
 
         texts: List[str] = []
         batch_image_inputs = []
-        batch_video_inputs = []
 
         for inp in batch_inp:
             # 推理时只包含 user turn，按照官方推荐构造 messages
@@ -421,16 +418,15 @@ def lorahub_inference(
             text = processor.apply_chat_template(
                 messages, tokenize=False, add_generation_prompt=True
             )
-            image_inputs, video_inputs = process_vision_info(messages)
+            image_inputs, _ = process_vision_info(messages)
 
             texts.append(text)
             batch_image_inputs.append(image_inputs)
-            batch_video_inputs.append(video_inputs)
 
+        # 同样这里只处理图片，多模态视频为空时不传 videos，避免内部 video_utils 报错
         inputs = processor(
             text=texts,
             images=batch_image_inputs,
-            videos=batch_video_inputs,
             padding=True,
             return_tensors="pt",
         )
