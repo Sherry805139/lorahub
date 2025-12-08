@@ -177,7 +177,7 @@ def _mm_get_loss(
             text=texts,
             images=batch_image_inputs,
             padding=True,
-            truncation=True,
+            # truncation=True,
             max_length=MAX_TEXT_LENGTH,
             return_tensors="pt",
         )
@@ -434,7 +434,7 @@ def lorahub_inference(
             text=texts,
             images=batch_image_inputs,
             padding=True,
-            truncation=True,
+            # truncation=True,
             max_length=MAX_TEXT_LENGTH,
             return_tensors="pt",
         )
