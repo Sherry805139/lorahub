@@ -7,7 +7,7 @@ from typing import List, Optional, Union, Any
 import torch
 from datasets import Dataset
 from torch.utils.data import DataLoader
-from transformers import default_data_collator, AutoTokenizer
+from transformers import default_data_collator, AutoTokenizer, AutoProcessor, Qwen2VLForConditionalGeneration
 from tqdm import tqdm
 import pandas as pd
 import numpy
@@ -18,6 +18,7 @@ import nevergrad as ng
 from swift.tuners import PeftModel, get_peft_model_state_dict
 from peft.utils.save_and_load import set_peft_model_state_dict
 from swift.llm.utils import get_model_tokenizer
+from qwen_vl_utils import process_vision_info
 
 
 def load_base_model_and_lora_modules(
