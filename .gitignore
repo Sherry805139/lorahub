@@ -160,3 +160,4 @@ cython_debug/
 #.idea/
 *.md
 *.sh
+test_swift_cate.py
