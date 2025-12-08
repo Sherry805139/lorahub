@@ -155,20 +155,25 @@ def _mm_get_loss(
         batch_inp = example_inputs[start : start + batch_size]
         batch_out = example_outputs[start : start + batch_size]
 
-        batch_messages = []
-        batch_images_nested = []
+        # 对 batch 中每个样本分别构造 messages / vision info / chat_template 文本
+        texts: List[str] = []
+        batch_image_inputs = []
+        batch_video_inputs = []
         for inp, out in zip(batch_inp, batch_out):
-            messages, images = _build_mm_messages_and_images(inp, out)
-            batch_messages.append(messages)
-            batch_images_nested.append(images)
-
-        # 官方工具：将 messages 中的 image 对象拆成 image_inputs / video_inputs
-        image_inputs, video_inputs = process_vision_info(batch_messages)
+            messages, _ = _build_mm_messages_and_images(inp, out)
+            # 训练阶段不需要 generation prompt
+            text = processor.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=False
+            )
+            image_inputs, video_inputs = process_vision_info(messages)
+            texts.append(text)
+            batch_image_inputs.append(image_inputs)
+            batch_video_inputs.append(video_inputs)
 
         inputs = processor(
-            text=batch_messages,
-            images=image_inputs,
-            videos=video_inputs,
+            text=texts,
+            images=batch_image_inputs,
+            videos=batch_video_inputs,
             padding=True,
             return_tensors="pt",
         )
@@ -397,7 +402,10 @@ def lorahub_inference(
     for start in range(0, len(example_inputs), batch_size):
         batch_inp = example_inputs[start : start + batch_size]
 
-        batch_messages = []
+        texts: List[str] = []
+        batch_image_inputs = []
+        batch_video_inputs = []
+
         for inp in batch_inp:
             # 推理时只包含 user turn，按照官方推荐构造 messages
             user_text, image_paths = _parse_text_and_image_paths(inp or "")
@@ -408,14 +416,21 @@ def lorahub_inference(
                 user_content.append({"type": "image", "image": img})
 
             messages = [{"role": "user", "content": user_content}]
-            batch_messages.append(messages)
 
-        image_inputs, video_inputs = process_vision_info(batch_messages)
+            # 推理阶段需要 generation prompt
+            text = processor.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True
+            )
+            image_inputs, video_inputs = process_vision_info(messages)
+
+            texts.append(text)
+            batch_image_inputs.append(image_inputs)
+            batch_video_inputs.append(video_inputs)
 
         inputs = processor(
-            text=batch_messages,
-            images=image_inputs,
-            videos=video_inputs,
+            text=texts,
+            images=batch_image_inputs,
+            videos=batch_video_inputs,
             padding=True,
             return_tensors="pt",
         )
