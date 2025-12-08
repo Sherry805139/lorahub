@@ -173,6 +173,7 @@ def _mm_get_loss(
             text=texts,
             images=batch_image_inputs,
             padding=True,
+            max_length=2048, 
             return_tensors="pt",
         )
         inputs = {k: v.to(device) for k, v in inputs.items()}
@@ -428,6 +429,7 @@ def lorahub_inference(
             text=texts,
             images=batch_image_inputs,
             padding=True,
+            max_length=2048, 
             return_tensors="pt",
         )
         inputs = {k: v.to(device) for k, v in inputs.items()}
