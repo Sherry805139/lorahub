@@ -59,9 +59,12 @@ def load_base_model_and_lora_modules(
     # 这里强制将模型全部放到单块 GPU 上（cuda:0），避免 accelerate 的 device_map=auto
     # 把权重切到多块卡上导致输入张量 device 不一致的问题。
     single_device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    # 为了节省显存，在支持 CUDA 的情况下使用 bfloat16 精度加载模型（约省一半参数显存）
+    # 如果后续发现数值不稳定，也可以改成 torch.float16 或 None。
+    load_dtype = torch.bfloat16 if torch.cuda.is_available() else None
     base_model, tokenizer = get_model_tokenizer(
         model_type,
-        torch_dtype=None,
+        torch_dtype=load_dtype,
         model_kwargs={"device_map": single_device},
         load_model=True,
         model_id_or_path=model_name_or_path,
