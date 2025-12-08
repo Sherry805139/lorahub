@@ -23,6 +23,10 @@ from .algorithm import (
 from peft.utils.save_and_load import set_peft_model_state_dict
 
 
+# 为了控制显存占用，限制每个样本参与建模的图片数量和文本长度
+MAX_TEXT_LENGTH = 1024
+
+
 def _set_seed(seed: int = 42):
     random.seed(seed)
     np.random.seed(seed)
@@ -173,7 +177,8 @@ def _mm_get_loss(
             text=texts,
             images=batch_image_inputs,
             padding=True,
-            max_length=2048, 
+            truncation=True,
+            max_length=MAX_TEXT_LENGTH,
             return_tensors="pt",
         )
         inputs = {k: v.to(device) for k, v in inputs.items()}
@@ -429,7 +434,8 @@ def lorahub_inference(
             text=texts,
             images=batch_image_inputs,
             padding=True,
-            max_length=2048, 
+            truncation=True,
+            max_length=MAX_TEXT_LENGTH,
             return_tensors="pt",
         )
         inputs = {k: v.to(device) for k, v in inputs.items()}
