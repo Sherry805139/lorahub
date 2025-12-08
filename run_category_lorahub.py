@@ -138,7 +138,7 @@ def main():
         lora_module_list=LORA_MODULES,
         example_inputs=example_inputs,
         example_outputs=example_outputs,
-        max_inference_step=40,  # 搜索步数，可以先用 20/40 试
+        max_inference_step=20,  # 搜索步数，可以先用 20/40 试
         batch_size=1,
         model_name_or_path=base_model_path,  # 或者 None 让它从 LoRA config 里自动读
     )
