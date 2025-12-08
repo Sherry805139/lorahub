@@ -1,7 +1,7 @@
 import json
 from typing import List, Dict
 
-from lorahub.algorithm import lorahub_learning, lorahub_inference
+from lorahub.algorithm_qwen2vl_mm import lorahub_learning, lorahub_inference
 
 # === 配置区 ===
 
