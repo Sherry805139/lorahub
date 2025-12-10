@@ -169,22 +169,24 @@ def _mm_get_loss(
                 messages, tokenize=False, add_generation_prompt=False
             )
             image_inputs, _ = process_vision_info(messages)
-            # 兼容纯文本样本：process_vision_info 可能返回 None，此时改成空列表，避免传入 None
-            # 触发 Qwen2VLImageProcessor.fetch_images 的 TypeError
+            # 兼容纯文本样本：process_vision_info 可能返回 None，此时改成空列表
             if image_inputs is None:
                 image_inputs = []
             texts.append(text)
             batch_image_inputs.append(image_inputs)
 
-        # 这里只有图像，没有视频，显式不传 videos，避免空视频列表触发内部错误
-        inputs = processor(
+        # 这里只有图像，没有视频；如果整个 batch 都没有图片，就完全不传 images 参数，
+        # 否则 Qwen2VLImageProcessor 会在 images=[] 时在 group_images_by_shape 里报 IndexError
+        processor_kwargs = dict(
             text=texts,
-            images=batch_image_inputs,
             padding=True,
             # truncation=True,
             max_length=MAX_TEXT_LENGTH,
             return_tensors="pt",
         )
+        if any(batch_image_inputs):
+            processor_kwargs["images"] = batch_image_inputs
+        inputs = processor(**processor_kwargs)
         inputs = {k: v.to(device) for k, v in inputs.items()}
 
         # 官方推荐：labels 为 input_ids 的拷贝，并对 padding 位置 mask
@@ -309,6 +311,38 @@ def lorahub_learning(
     merged_model = model.merge_and_unload()
 
     return recommendation.value, merged_model, processor
+
+
+def build_model_with_fixed_weights(
+    lora_module_list: List[str],
+    weights: List[float],
+    model_name_or_path: Optional[str] = None,
+) -> Tuple[Qwen2VLForConditionalGeneration, AutoProcessor]:
+    """
+    使用给定的 weights 线性组合 LoRA，并直接返回合并后的 Qwen2‑VL 模型和 AutoProcessor。
+    主要用于 debug：跳过 Nevergrad 搜索，直接用已经学好的权重。
+    """
+    if len(weights) != len(lora_module_list):
+        raise ValueError(
+            f"len(weights)={len(weights)} 和 len(lora_module_list)={len(lora_module_list)} 不一致"
+        )
+
+    base_model_name = _get_base_model_name_from_lora(
+        lora_module_list, model_name_or_path=model_name_or_path
+    )
+    processor = AutoProcessor.from_pretrained(
+        base_model_name,
+        trust_remote_code=True,
+    )
+
+    model, _tokenizer, cache = load_base_model_and_lora_modules(
+        lora_module_list, model_name_or_path=base_model_name
+    )
+    final_lora = get_final_weights(weights, lora_module_list, cache)
+    set_peft_model_state_dict(model, final_lora)
+
+    merged_model = model.merge_and_unload()
+    return merged_model, processor
 
 
 def lorahub_inference(
@@ -436,15 +470,18 @@ def lorahub_inference(
             texts.append(text)
             batch_image_inputs.append(image_inputs)
 
-        # 同样这里只处理图片，多模态视频为空时不传 videos，避免内部 video_utils 报错
-        inputs = processor(
+        # 同样这里只处理图片；如果整个 batch 都没有图片，就不传 images，避免
+        # Qwen2VLImageProcessor 在 images=[] 时在 group_images_by_shape 里 IndexError
+        processor_kwargs = dict(
             text=texts,
-            images=batch_image_inputs,
             padding=True,
             # truncation=True,
             max_length=MAX_TEXT_LENGTH,
             return_tensors="pt",
         )
+        if any(batch_image_inputs):
+            processor_kwargs["images"] = batch_image_inputs
+        inputs = processor(**processor_kwargs)
         inputs = {k: v.to(device) for k, v in inputs.items()}
 
         with torch.no_grad():
