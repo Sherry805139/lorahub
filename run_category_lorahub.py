@@ -1,7 +1,11 @@
 import json
 from typing import List, Dict
 
-from lorahub.algorithm_qwen2vl_mm import lorahub_learning, lorahub_inference
+from lorahub.algorithm_qwen2vl_mm import (
+    lorahub_learning,
+    lorahub_inference,
+    build_model_with_fixed_weights,
+)
 
 # === 配置区 ===
 
@@ -13,6 +17,11 @@ LORA_MODULES = [
     "/home/hmpiao/hmpiao/xuerong/FedMABench/output/category_lora_traveling",
     "/home/hmpiao/hmpiao/xuerong/FedMABench/output/category_lora_lives",
 ]
+
+# （可选）固定好的 LoRA 加权向量，用于跳过搜索、加速 debug
+# 长度必须与 LORA_MODULES 相同
+USE_FIXED_WEIGHTS = True
+FIXED_WEIGHTS = [0.12282166, -0.00815929, -0.01167593, -0.00863875, -0.01619601]
 
 # 2）few-shot 学习用的数据（example.jsonl）和推理评估用的数据（infer.jsonl）
 EXAMPLE_JSONL = "example.jsonl"
@@ -134,16 +143,26 @@ def main():
     # 如果你自己有一个本地底模目录，比如 base_model，就这样写：
     base_model_path = None  # 如果有单独的底模目录，可以改成对应路径
 
-    module_weights, model, tokenizer = lorahub_learning(
-        lora_module_list=LORA_MODULES,
-        example_inputs=example_inputs,
-        example_outputs=example_outputs,
-        max_inference_step=20,  # 搜索步数，可以先用 20/40 试
-        batch_size=1,
-        model_name_or_path=base_model_path,  # 或者 None 让它从 LoRA config 里自动读
-    )
+    if USE_FIXED_WEIGHTS:
+        # 使用已经学习好的固定权重，直接构建合并后的模型，跳过 Nevergrad 搜索
+        module_weights = FIXED_WEIGHTS
+        print("use fixed weights:", module_weights)
+        model, tokenizer = build_model_with_fixed_weights(
+            lora_module_list=LORA_MODULES,
+            weights=module_weights,
+            model_name_or_path=base_model_path,
+        )
+    else:
+        module_weights, model, tokenizer = lorahub_learning(
+            lora_module_list=LORA_MODULES,
+            example_inputs=example_inputs,
+            example_outputs=example_outputs,
+            max_inference_step=20,  # 搜索步数，可以先用 20/40 试
+            batch_size=1,
+            model_name_or_path=base_model_path,  # 或者 None 让它从 LoRA config 里自动读
+        )
 
-    print("learned weights:", module_weights)
+        print("learned weights:", module_weights)
 
     # 用组合后的模型在 infer.jsonl 上做推理
     test_inputs, test_labels = load_inputs_and_labels_from_infer_jsonl(
