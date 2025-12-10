@@ -169,6 +169,10 @@ def _mm_get_loss(
                 messages, tokenize=False, add_generation_prompt=False
             )
             image_inputs, _ = process_vision_info(messages)
+            # 兼容纯文本样本：process_vision_info 可能返回 None，此时改成空列表，避免传入 None
+            # 触发 Qwen2VLImageProcessor.fetch_images 的 TypeError
+            if image_inputs is None:
+                image_inputs = []
             texts.append(text)
             batch_image_inputs.append(image_inputs)
 
@@ -425,6 +429,9 @@ def lorahub_inference(
                 messages, tokenize=False, add_generation_prompt=True
             )
             image_inputs, _ = process_vision_info(messages)
+            # 兼容没有图片的样本，避免把 None 直接传给图像处理器
+            if image_inputs is None:
+                image_inputs = []
 
             texts.append(text)
             batch_image_inputs.append(image_inputs)
