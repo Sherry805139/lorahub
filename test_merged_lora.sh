@@ -22,7 +22,7 @@ swift infer \
   --ckpt_dir "$MERGED_DIR" \
   --val_dataset "$VAL_DATASET" \
   --model_type qwen2-vl-2b-instruct \
-  --model_id_or_path "$MERGED_DIR" \
+  --model_id_or_path "/home/hmpiao/hmpiao/Qwen2-VL-2B-Instruct" \
   --sft_type full
 
 if [ $? -ne 0 ]; then
