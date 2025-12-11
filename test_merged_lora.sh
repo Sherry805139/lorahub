@@ -6,7 +6,7 @@
 
 GPU_ID=${1:-0}
 
-MERGED_DIR="../FedMABench/output/category_lora_office"
+MERGED_DIR="./output/lorahub_global_lora_merged"
 VAL_DATASET="./infer.jsonl"
 
 echo "[INFO] Using GPU: $GPU_ID"
