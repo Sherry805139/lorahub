@@ -21,8 +21,7 @@ LORA_MODULES = [
 # （可选）固定好的 LoRA 加权向量，用于跳过搜索、加速 debug
 # 长度必须与 LORA_MODULES 相同
 USE_FIXED_WEIGHTS = True
-# FIXED_WEIGHTS = [0.12282166, -0.00815929, -0.01167593, -0.00863875, -0.01619601]
-FIXED_WEIGHTS = [1,0,0,0,0]
+FIXED_WEIGHTS = [0.12282166, -0.00815929, -0.01167593, -0.00863875, -0.01619601]
 
 # 2）few-shot 学习用的数据（example.jsonl）和推理评估用的数据（infer.jsonl）
 EXAMPLE_JSONL = "example.jsonl"
