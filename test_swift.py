@@ -1,8 +1,53 @@
 import os
 from tqdm import tqdm
 import json
-from eval_gpt import calculate_tfidf
 import argparse
+import math
+
+
+def calculate_tfidf(a: str, b: str) -> float:
+    """
+    与 lorahub.algorithm_qwen2vl_mm._tfidf_cosine 保持一致的 TF-IDF 余弦相似度实现，
+    避免依赖外部的 eval_gpt 模块。
+    """
+    tokens_a = a.lower().strip().split()
+    tokens_b = b.lower().strip().split()
+    if not tokens_a or not tokens_b:
+        return 0.0
+
+    vocab = {}
+    for tok in set(tokens_a + tokens_b):
+        vocab.setdefault(tok, len(vocab))
+
+    def build_vec(tokens):
+        tf = [0.0] * len(vocab)
+        for t in tokens:
+            if t in vocab:
+                tf[vocab[t]] += 1.0
+        return tf
+
+    tf_a = build_vec(tokens_a)
+    tf_b = build_vec(tokens_b)
+
+    df = [0] * len(vocab)
+    for i, v in enumerate(tf_a):
+        if v > 0:
+            df[i] += 1
+    for i, v in enumerate(tf_b):
+        if v > 0:
+            df[i] += 1
+    N = 2.0
+    idf = [math.log((N + 1.0) / (d + 1.0)) + 1.0 for d in df]
+
+    vec_a = [tf_a[i] * idf[i] for i in range(len(vocab))]
+    vec_b = [tf_b[i] * idf[i] for i in range(len(vocab))]
+
+    dot = sum(x * y for x, y in zip(vec_a, vec_b))
+    norm_a = math.sqrt(sum(x * x for x in vec_a))
+    norm_b = math.sqrt(sum(x * x for x in vec_b))
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+    return dot / (norm_a * norm_b)
 
 
 def read_jsonl(path):
