@@ -32,6 +32,10 @@ INFER_JSONL = "infer.jsonl"
 IMAGE_PREFIX_SRC = "/ailab/user/wangwenhao/ms-swift/androidcontrol_1108/unpack-androidcontrol/"
 IMAGE_PREFIX_DST = "./android_control_unpack/"
 
+# 4）是否将 merge 后的模型落盘，方便后续用 swift infer 等脚本进行推理
+SAVE_MERGED_MODEL = True
+MERGED_MODEL_DIR = "./output/lorahub_global_lora_merged"
+
 
 def _rewrite_image_path(path: str) -> str:
     """按照 IMAGE_PREFIX_SRC/IMAGE_PREFIX_DST 重写图片路径"""
@@ -164,7 +168,14 @@ def main():
 
         print("learned weights:", module_weights)
 
-    # 用组合后的模型在 infer.jsonl 上做推理
+    # 可选：将 merge 后的模型落盘，作为一个独立 ckpt 目录，方便用 swift infer 之类的脚本复用
+    if SAVE_MERGED_MODEL:
+        print(f"Saving merged model to: {MERGED_MODEL_DIR}")
+        model.save_pretrained(MERGED_MODEL_DIR)
+        # tokenizer 在这里其实是 AutoProcessor，同样可以 save_pretrained
+        tokenizer.save_pretrained(MERGED_MODEL_DIR)
+
+    # 用组合后的模型在 infer.jsonl 上做一个快速 sanity check（与 swift 的正式评估略有差异）
     test_inputs, test_labels = load_inputs_and_labels_from_infer_jsonl(
         INFER_JSONL, max_examples=100
     )
