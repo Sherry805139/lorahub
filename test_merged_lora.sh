@@ -23,7 +23,7 @@ swift infer \
   --val_dataset "$VAL_DATASET" \
   --model_type qwen2-vl-2b-instruct \
   --model_id_or_path "/home/hmpiao/hmpiao/Qwen2-VL-2B-Instruct" \
-  --sft_type full
+  --sft_type lora
 
 if [ $? -ne 0 ]; then
   echo "[ERROR] swift infer failed."
