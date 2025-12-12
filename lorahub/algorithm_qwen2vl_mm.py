@@ -155,30 +155,49 @@ def _mm_get_loss(
     total_loss = 0.0
     total_examples = 0
 
+    # 需要 tokenizer 来构造「只包含 user turn」的 token 长度，用于 mask 掉 prompt
+    tokenizer = getattr(processor, "tokenizer", None)
+    if tokenizer is None:
+        raise ValueError("processor.tokenizer is required for computing multimodal loss.")
+
     for start in range(0, len(example_inputs), batch_size):
         batch_inp = example_inputs[start : start + batch_size]
         batch_out = example_outputs[start : start + batch_size]
 
-        # 对 batch 中每个样本分别构造 messages / vision info / chat_template 文本
-        texts: List[str] = []
+        # 对 batch 中每个样本分别构造：
+        # - messages_full: user + assistant（用于 forward）
+        # - messages_user: 只有 user turn（用于估计 prompt 长度）
+        texts_full: List[str] = []
+        texts_user: List[str] = []
         batch_image_inputs = []
+
         for inp, out in zip(batch_inp, batch_out):
-            messages, _ = _build_mm_messages_and_images(inp, out)
-            # 训练阶段不需要 generation prompt
-            text = processor.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=False
+            # 完整对话：user + assistant
+            messages_full, _ = _build_mm_messages_and_images(inp, out)
+            text_full = processor.apply_chat_template(
+                messages_full, tokenize=False, add_generation_prompt=False
             )
-            image_inputs, _ = process_vision_info(messages)
-            # 兼容纯文本样本：process_vision_info 可能返回 None，此时改成空列表
+
+            # 仅 user turn，用于估计需要 mask 掉的 prompt token 数
+            messages_user, _ = _build_mm_messages_and_images(inp, None)
+            text_user = processor.apply_chat_template(
+                messages_user, tokenize=False, add_generation_prompt=False
+            )
+
+            image_inputs, _ = process_vision_info(messages_full)
+            # 兼容纯文本样本：process_vision_info 可能返回 None，此时改成空列表，避免传入 None
+            # 触发 Qwen2VLImageProcessor.fetch_images 的 TypeError
             if image_inputs is None:
                 image_inputs = []
-            texts.append(text)
+
+            texts_full.append(text_full)
+            texts_user.append(text_user)
             batch_image_inputs.append(image_inputs)
 
         # 这里只有图像，没有视频；如果整个 batch 都没有图片，就完全不传 images 参数，
         # 否则 Qwen2VLImageProcessor 会在 images=[] 时在 group_images_by_shape 里报 IndexError
         processor_kwargs = dict(
-            text=texts,
+            text=texts_full,
             padding=True,
             # truncation=True,
             max_length=MAX_TEXT_LENGTH,
@@ -189,10 +208,22 @@ def _mm_get_loss(
         inputs = processor(**processor_kwargs)
         inputs = {k: v.to(device) for k, v in inputs.items()}
 
-        # 官方推荐：labels 为 input_ids 的拷贝，并对 padding 位置 mask
+        # labels 初始为 input_ids 的拷贝
         labels = inputs["input_ids"].clone()
+        # 先 mask 掉 padding 位置
         if "attention_mask" in inputs:
             labels[inputs["attention_mask"] == 0] = -100
+
+        # 再根据「只有 user turn」的 token 长度，mask 掉 prompt 部分
+        for i, user_text in enumerate(texts_user):
+            enc_user = tokenizer(
+                user_text,
+                max_length=MAX_TEXT_LENGTH,
+                truncation=True,
+                add_special_tokens=True,
+            )
+            prompt_len = min(len(enc_user["input_ids"]), labels.shape[1])
+            labels[i, :prompt_len] = -100
 
         with torch.no_grad():
             outputs = model(**inputs, labels=labels)
@@ -253,8 +284,8 @@ def lorahub_learning(
     Qwen2‑VL 多模态版本的 LoRAHub 学习过程：
 
     - 使用 swift 的 load_base_model_and_lora_modules 加载带 LoRA 结构的 Qwen2‑VL 模型
-    - 额外加载 AutoProcessor 和 qwen_vl_utils.process_vision_info 以支持图片像素输入
-    - 在 few-shot loss 中同时考虑文本和图片
+    - 使用多模态版 few-shot loss（文本 + 图片，且只在 assistant 输出部分计算 loss）作为 Nevergrad 的优化目标
+    - 得到最优权重后，将 LoRA 合并回底模，返回一个可直接用于多模态推理的模型和 AutoProcessor
     """
     _set_seed(seed)
 
@@ -288,7 +319,7 @@ def lorahub_learning(
         budget=max_inference_step,
     )
 
-    print("> Begin to perform gradient-free optimization (multimodal, Qwen2‑VL) ...")
+    print("> Begin to perform gradient-free optimization (multimodal, Qwen2‑VL, CE-on-assistant-only) ...")
 
     get_score_partial = lambda w: _mm_get_score(
         weights=w,
