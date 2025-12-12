@@ -160,3 +160,4 @@ cython_debug/
 #.idea/
 *.md
 test_swift_cate.py
+train_per_category_lora.sh
