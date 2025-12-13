@@ -1,6 +1,6 @@
 import os
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoProcessor, Qwen2VLForConditionalGeneration
 from peft import PeftModel
 
 FULL_MODEL_PATH = "/home/hmpiao/hmpiao/Qwen2-VL-2B-Instruct"
@@ -17,9 +17,10 @@ def merge_lora_with_base_model():
     print(f'Loading LoRA adapter from: {lora_adapter_path}')
     
     try:
-        base_model = AutoModelForCausalLM.from_pretrained(
+        # Qwen2-VL 是多模态模型，不能用 AutoModelForCausalLM，而是要用 Qwen2VLForConditionalGeneration
+        base_model = Qwen2VLForConditionalGeneration.from_pretrained(
             base_model_path,
-            torch_dtype=torch.bfloat16,
+            dtype=torch.bfloat16,
             trust_remote_code=True,
             device_map='cpu'
         )
@@ -56,7 +57,8 @@ def merge_lora_with_base_model():
         merged_model.save_pretrained(merged_path)
         
         print('Saving tokenizer...')
-        tokenizer = AutoTokenizer.from_pretrained(base_model_path, trust_remote_code=True)
+        # 对于 Qwen2-VL，多模态输入推荐使用 AutoProcessor
+        tokenizer = AutoProcessor.from_pretrained(base_model_path, trust_remote_code=True)
         tokenizer.save_pretrained(merged_path)
         
         print('LoRA adapter successfully merged with base model.')
