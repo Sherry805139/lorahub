@@ -303,10 +303,24 @@ def lorahub_learning(
         trust_remote_code=True,
     )
 
-    # 使用原有的加载逻辑拿到带 LoRA 的 Qwen2‑VL 模型
+    # 使用原有的加载逻辑拿到带 LoRA 结构的 Qwen2‑VL 模型（PeftModel）
     model, _tokenizer, cache = load_base_model_and_lora_modules(
         lora_module_list, model_name_or_path=base_model_name
     )
+    print(f"[LoRAHub Debug] PEFT model class before merge: {type(model)}")
+    base_for_diff = getattr(model, "base_model", model)
+    print(f"[LoRAHub Debug] Underlying base model class inside PEFT: {type(base_for_diff)}")
+
+    # 抽样记录一部分底模参数，后面用于和 merge 后的模型做 diff
+    sampled_param_names: List[str] = []
+    base_snapshots = {}
+    for name, param in base_for_diff.state_dict().items():
+        if torch.is_floating_point(param):
+            sampled_param_names.append(name)
+            base_snapshots[name] = param.detach().cpu().clone()
+            if len(sampled_param_names) >= 10:
+                break
+    print(f"[LoRAHub Debug] Sampled {len(sampled_param_names)} float parameters from base_model for merge diff check.")
 
     # Nevergrad 的优化器配置与原始实现保持一致
     instrum = ng.p.Array(
@@ -339,7 +353,22 @@ def lorahub_learning(
     set_peft_model_state_dict(model, final_lora)
 
     # 将 LoRA 合并回底模，得到一个可直接用于推理的 Qwen2‑VL 模型
+    print("[LoRAHub Debug] Merging LoRA adapters into base model (lorahub_learning)...")
     merged_model = model.merge_and_unload()
+    print(f"[LoRAHub Debug] Merged model class (lorahub_learning): {type(merged_model)}")
+
+    # 对比 merge 前后这些参数是否发生了变化
+    merged_state = merged_model.state_dict()
+    for name in sampled_param_names:
+        before = base_snapshots.get(name, None)
+        after = merged_state.get(name, None)
+        if before is None or after is None:
+            print(f'[LoRAHub Debug] Param "{name}": missing in one of the states, skip diff.')
+            continue
+        before = before.detach().cpu()
+        after = after.detach().cpu()
+        diff = (after - before).abs().max().item()
+        print(f'[LoRAHub Debug] Param "{name}" (lorahub_learning): max abs diff after merge = {diff:.6e}')
 
     return recommendation.value, merged_model, processor
 
@@ -369,10 +398,39 @@ def build_model_with_fixed_weights(
     model, _tokenizer, cache = load_base_model_and_lora_modules(
         lora_module_list, model_name_or_path=base_model_name
     )
+    print(f"[LoRAHub Debug] PEFT model class before merge (fixed-weights): {type(model)}")
+    base_for_diff = getattr(model, "base_model", model)
+    print(f"[LoRAHub Debug] Underlying base model class inside PEFT (fixed-weights): {type(base_for_diff)}")
+
+    # 抽样记录一部分底模参数，后面用于和 merge 后的模型做 diff
+    sampled_param_names: List[str] = []
+    base_snapshots = {}
+    for name, param in base_for_diff.state_dict().items():
+        if torch.is_floating_point(param):
+            sampled_param_names.append(name)
+            base_snapshots[name] = param.detach().cpu().clone()
+            if len(sampled_param_names) >= 10:
+                break
+    print(f"[LoRAHub Debug] Sampled {len(sampled_param_names)} float parameters from base_model for merge diff check (fixed-weights).")
     final_lora = get_final_weights(weights, lora_module_list, cache)
     set_peft_model_state_dict(model, final_lora)
 
+    print("[LoRAHub Debug] Merging LoRA adapters into base model (fixed-weights)...")
     merged_model = model.merge_and_unload()
+    print(f"[LoRAHub Debug] Merged model class (fixed-weights): {type(merged_model)}")
+
+    # 对比 merge 前后这些参数是否发生了变化
+    merged_state = merged_model.state_dict()
+    for name in sampled_param_names:
+        before = base_snapshots.get(name, None)
+        after = merged_state.get(name, None)
+        if before is None or after is None:
+            print(f'[LoRAHub Debug] Param "{name}": missing in one of the states, skip diff (fixed-weights).')
+            continue
+        before = before.detach().cpu()
+        after = after.detach().cpu()
+        diff = (after - before).abs().max().item()
+        print(f'[LoRAHub Debug] Param "{name}" (fixed-weights): max abs diff after merge = {diff:.6e}')
     return merged_model, processor
 
 

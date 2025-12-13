@@ -167,6 +167,10 @@ def main():
 
         print("learned weights:", module_weights)
 
+    # 打印最终模型和 tokenizer 的类，方便老师确认类型是否正确
+    print(f"[LoRAHub Debug] Final merged model class from main(): {type(model)}")
+    print(f"[LoRAHub Debug] Final processor/tokenizer class from main(): {type(tokenizer)}")
+
     # 可选：将 merge 后的模型落盘，作为一个独立 ckpt 目录，方便用 swift infer 之类的脚本复用
     if SAVE_MERGED_MODEL:
         print(f"Saving merged model to: {MERGED_MODEL_DIR}")
