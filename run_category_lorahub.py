@@ -178,20 +178,20 @@ def main():
         # tokenizer 在这里其实是 AutoProcessor，同样可以 save_pretrained
         tokenizer.save_pretrained(MERGED_MODEL_DIR)
 
-    # 用组合后的模型在 infer.jsonl 上做一个快速 sanity check（与 swift 的正式评估略有差异）
-    test_inputs, test_labels = load_inputs_and_labels_from_infer_jsonl(
-        INFER_JSONL, max_examples=100
-    )
-    preds, acc = lorahub_inference(
-        example_inputs=test_inputs,
-        model_or_name_path=model,  # 直接传上面返回的合并后模型
-        tokenizer_or_tokenizer_path=tokenizer,
-        batch_size=8,
-        example_outputs=test_labels,  # 使用 acts_convert 作为标签，计算 accuracy
-    )
-    print("num_test_examples:", len(test_inputs))
-    print("predictions_example_0_3:", preds[:3])
-    print("accuracy:", acc)
+    # # 用组合后的模型在 infer.jsonl 上做一个快速 sanity check（与 swift 的正式评估略有差异）
+    # test_inputs, test_labels = load_inputs_and_labels_from_infer_jsonl(
+    #     INFER_JSONL, max_examples=100
+    # )
+    # preds, acc = lorahub_inference(
+    #     example_inputs=test_inputs,
+    #     model_or_name_path=model,  # 直接传上面返回的合并后模型
+    #     tokenizer_or_tokenizer_path=tokenizer,
+    #     batch_size=8,
+    #     example_outputs=test_labels,  # 使用 acts_convert 作为标签，计算 accuracy
+    # )
+    # print("num_test_examples:", len(test_inputs))
+    # print("predictions_example_0_3:", preds[:3])
+    # print("accuracy:", acc)
 
 
 if __name__ == "__main__":
